@@ -1,19 +1,44 @@
-#!/bin/sh
-random() {
-	tr </dev/urandom -dc A-Za-z0-9 | head -c5
-	echo
+#!/bin/bash
+
+# Script Name: ipv6_proxies_server.sh
+# Description: This script sets up multiple IPv6 proxies using 3proxy on AlmaLinux, opens the necessary ports, and restarts the NetworkManager.
+
+# Variables
+CONFIG_FILE="/etc/3proxy/3proxy.cfg"
+START_PORT=10000
+
+# Function to generate random hexadecimal values
+generate_random_hex() {
+    printf "%x" $((RANDOM % 65536))
 }
 
-array=(1 2 3 4 5 6 7 8 9 0 a b c d e f)
-gen64() {
-	ip64() {
-		echo "${array[$RANDOM % 16]}${array[$RANDOM % 16]}${array[$RANDOM % 16]}${array[$RANDOM % 16]}"
-	}
-	echo "$1:$(ip64):$(ip64):$(ip64):$(ip64)"
-}
+# Get the server's base IPv4 address
+BASE_IPV4=$(hostname -I | awk '{print $1}')
 
-gen_3proxy() {
-    cat <<EOF
+# Get the server's base IPv6 address (excluding the interface identifier)
+BASE_IPV6=$(ip -6 addr | grep 'global' | grep -v 'temporary' | awk '{print $2}' | cut -d'/' -f1 | head -n 1 | cut -d':' -f1-4)
+
+# Automatically detect the network interface
+INTERFACE=$(ip -6 route | grep default | awk '{print $5}')
+
+if [ -z "$BASE_IPV4" ] || [ -z "$BASE_IPV6" ] || [ -z "$INTERFACE" ]; then
+    echo "Failed to retrieve base IPv4, IPv6 address, or network interface. Please check your network configuration."
+    exit 1
+fi
+
+# Get the number of proxies from user input
+read -p "Enter the number of proxies to create: " NUM_PROXIES
+
+# Update system and install 3proxy
+echo "Updating system and installing 3proxy..."
+yum update -y
+
+# Create 3proxy configuration directory if it doesn't exist
+mkdir -p /usr/local/etc/3proxy
+
+# Create 3proxy configuration file with base settings
+cat <<EOL > $CONFIG_FILE
+# 3proxy base configuration
 daemon
 maxconn 1000
 nscache 65536
@@ -22,61 +47,55 @@ setgid 65535
 setuid 65535
 flush
 auth strong
-
 users hirohero89:CL:duykhanh
+EOL
 
-$(awk -F "/" '{print "auth strong\n" \
-"allow hirohero89\n" \
-"proxy -6 -n -a -p" $4 " -i" $3 " -e"$5"\n" \
-"flush\n"}' ${WORKDATA})
-EOF
-}
+# Loop to generate the specified number of proxies, add them to the server, and open the ports
+for (( i=0; i<$NUM_PROXIES; i++ ))
+do
+    PORT=$((START_PORT + i))
+    RAND1=$(generate_random_hex)
+    RAND2=$(generate_random_hex)
+    RAND3=$(generate_random_hex)
+    RAND4=$(generate_random_hex)
 
-gen_data() {
-    seq $FIRST_PORT $LAST_PORT | while read port; do
-        echo "usr$(random)/pass$(random)/$IP4/$port/$(gen64 $IP6)"
-    done
-}
+    IPV6_ADDRESS="$BASE_IPV6:$RAND1:$RAND2:$RAND3:$RAND4"
 
-gen_iptables() {
-    cat <<EOF
-    $(awk -F "/" '{print "iptables -I INPUT -p tcp --dport " $4 "  -m state --state NEW -j ACCEPT"}' ${WORKDATA}) 
-EOF
-}
+    # Add the generated IPv6 address to the server
+    sudo ip -6 addr add $IPV6_ADDRESS/64 dev $INTERFACE
 
-gen_ifconfig() {
-    cat <<EOF
-$(awk -F "/" '{print "ifconfig eth0 inet6 add " $5 "/64"}' ${WORKDATA})
-EOF
-}
+    # Add proxy configuration to 3proxy config file
+    cat <<EOL >> $CONFIG_FILE
+auth strong
+allow hirohero89
+proxy -6 -n -a -p$PORT -i$BASE_IPV4 -e$IPV6_ADDRESS
+flush
+EOL
 
-WORKDIR="/home/proxy-installer"
-WORKDATA="${WORKDIR}/data.txt"
+    # Open the port in the firewall using firewalld
+    sudo firewall-cmd --zone=public --add-port=$PORT/tcp --permanent
+done
 
-IP4=$(hostname -I | awk '{print $1}')
-IP6=$(ip -6 addr | grep 'global' | grep -v 'temporary' | awk '{print $2}' | cut -d'/' -f1 | head -n 1 | cut -d':' -f1-4)
+# Reload the firewall to apply the new rules
+sudo firewall-cmd --reload
 
-echo "Internal ip = ${IP4}. Exteranl sub for ip6 = ${IP6}"
+# Save iptables rules (optional if using firewalld)
+sudo service iptables save
+sudo service ip6tables save
 
-echo "How many proxy do you want to create? Example 500"
-read COUNT
+# Restart NetworkManager to apply network changes
+echo "Restarting NetworkManager..."
+sudo systemctl restart NetworkManager
 
-FIRST_PORT=10000
-LAST_PORT=$(($FIRST_PORT + $COUNT))
+# Enable and start 3proxy service
+echo "Enabling and starting 3proxy service..."
+systemctl enable 3proxy
+systemctl start 3proxy
 
-gen_data >$WORKDIR/data.txt
-gen_iptables >$WORKDIR/boot_iptables.sh
-gen_ifconfig >$WORKDIR/boot_ifconfig.sh
-chmod +x ${WORKDIR}/boot_*.sh /etc/rc.local
+# Display status of 3proxy service
+systemctl status 3proxy
 
-gen_3proxy >/etc/3proxy/3proxy.cfg
-
-cat >>/etc/rc.local <<EOF
-bash ${WORKDIR}/boot_iptables.sh
-bash ${WORKDIR}/boot_ifconfig.sh
-ulimit -n 10048
-service 3proxy start
-EOF
-
-bash /etc/rc.local
-gen_proxy_file_for_user
+echo "IPv6 proxy server setup completed with $NUM_PROXIES proxies starting from port $START_PORT."
+echo "Base IPv4: $BASE_IPV4"
+echo "Base IPv6: $BASE_IPV6"
+echo "Network Interface: $INTERFACE"
