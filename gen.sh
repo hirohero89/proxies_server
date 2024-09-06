@@ -34,7 +34,7 @@ echo "Updating system and installing 3proxy..."
 yum update -y
 
 # Create 3proxy configuration directory if it doesn't exist
-mkdir -p /usr/local/etc/3proxy
+mkdir -p /etc/3proxy
 
 # Create 3proxy configuration file with base settings
 cat <<EOL > $CONFIG_FILE
