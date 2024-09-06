@@ -89,6 +89,7 @@ sudo systemctl restart NetworkManager
 
 # Enable and start 3proxy service
 echo "Enabling and starting 3proxy service..."
+systemctl stop 3proxy
 systemctl enable 3proxy
 systemctl start 3proxy
 
