@@ -59,6 +59,7 @@ fi
 echo "Updating 3proxy.cfg with new IPv6 addresses..."
 index=0
 while read -r ipv6_address; do
+    echo "Updating with address: $ipv6_address" # Debug line
     sed -i "s/-e [0-9a-f:]*\b/-e $ipv6_address/" $PROXY_CONFIG
     index=$((index + 1))
 done < $TEMP_IPV6_FILE
@@ -68,6 +69,7 @@ if [ -f $IFCONFIG_SCRIPT ]; then
     echo "Updating boot_ifconfig.sh with new IPv6 addresses..."
     index=0
     while read -r ipv6_address; do
+        echo "Updating with address: $ipv6_address" # Debug line
         sed -i "s/add [0-9a-f:]*\b/add $ipv6_address/" $IFCONFIG_SCRIPT
         index=$((index + 1))
     done < $TEMP_IPV6_FILE
