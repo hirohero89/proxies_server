@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Fetch the current IPv6 address (prefix)
+# Fetch the current IPv6 /64 prefix (first 4 blocks)
 CURRENT_IPV6='2a01:4f8:1c1b:6f7c'
 
 # Define the file paths
@@ -11,7 +11,7 @@ TEMP_IPV6_FILE="${WORKDIR}/generated_ipv6.txt"
 
 # Check if CURRENT_IPV6 is set
 if [[ -z "$CURRENT_IPV6" ]]; then
-    echo "Error: Unable to retrieve the current IPv6 address."
+    echo "Error: Unable to retrieve the current IPv6 prefix."
     exit 1
 fi
 
@@ -27,8 +27,11 @@ generate_ipv6_suffix() {
     printf '%x:%x:%x:%x\n' $((RANDOM%65536)) $((RANDOM%65536)) $((RANDOM%65536)) $((RANDOM%65536))
 }
 
-# Generate random IPv6 addresses and store them in a temporary file
-echo "Generating random IPv6 addresses..."
+# Clear or create the temporary IPv6 file
+> $TEMP_IPV6_FILE
+
+# Generate random IPv6 addresses and store them in generated_ipv6.txt
+echo "Generating and writing random IPv6 addresses to $TEMP_IPV6_FILE..."
 grep -oP '(?<=-e\s)[0-9a-f:]{1,39}' $PROXY_CONFIG | while read -r line; do
     RANDOM_SUFFIX=$(generate_ipv6_suffix)
     GENERATED_IPV6="$CURRENT_IPV6:$RANDOM_SUFFIX"
@@ -60,7 +63,8 @@ if [ -f $IFCONFIG_SCRIPT ]; then
     grep "add" $IFCONFIG_SCRIPT
 fi
 
-# Clean up
-rm $TEMP_IPV6_FILE
+# IPv6 addresses have been saved to generated_ipv6.txt
+echo "Generated IPv6 addresses:"
+cat $TEMP_IPV6_FILE
 
 echo "IPv6 addresses updated successfully!"
