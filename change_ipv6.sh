@@ -4,7 +4,7 @@
 CURRENT_IPV6='2a01:4f8:1c1b:6f7c'
 
 # Define the file paths
-WORKDIR="/home/proxy-installer"
+WORKDIR="/home/proxy-installer"  # Corrected path
 PROXY_CONFIG="/etc/3proxy/3proxy.cfg"
 IFCONFIG_SCRIPT="${WORKDIR}/boot_ifconfig.sh"
 TEMP_IPV6_FILE="${WORKDIR}/generated_ipv6.txt"
@@ -26,6 +26,9 @@ fi
 generate_ipv6_suffix() {
     printf '%x:%x:%x:%x\n' $((RANDOM%65536)) $((RANDOM%65536)) $((RANDOM%65536)) $((RANDOM%65536))
 }
+
+# Create the directory if it doesn't exist
+mkdir -p $WORKDIR
 
 # Clear or create the temporary IPv6 file
 > $TEMP_IPV6_FILE
