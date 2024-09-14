@@ -1,48 +1,66 @@
 #!/bin/bash
 
-# Fetch the current IPv6 address from the system interface (e.g., eth0)
+# Fetch the current IPv6 address (prefix)
 CURRENT_IPV6='2a01:4f8:1c1b:6f7c'
 
 # Define the file paths
 WORKDIR="/home/proxy-installer"
 PROXY_CONFIG="/etc/3proxy/3proxy.cfg"
-IPTABLES_SCRIPT="${WORKDIR}/boot_iptables.sh"
 IFCONFIG_SCRIPT="${WORKDIR}/boot_ifconfig.sh"
+TEMP_IPV6_FILE="${WORKDIR}/generated_ipv6.txt"
 
-# Check if CURRENT_IPV6 is found
+# Check if CURRENT_IPV6 is set
 if [[ -z "$CURRENT_IPV6" ]]; then
     echo "Error: Unable to retrieve the current IPv6 address."
     exit 1
 fi
 
-# Backup existing files
+# Backup existing 3proxy.cfg and boot_ifconfig.sh files
 echo "Backing up configuration files..."
-cp $PROXY_CONFIG $PROXY_CONFIG.bak
-cp $IPTABLES_SCRIPT $IPTABLES_SCRIPT.bak
+cp $PROXY_CONFIG ${PROXY_CONFIG}.bak
 if [ -f $IFCONFIG_SCRIPT ]; then
-    cp $IFCONFIG_SCRIPT $IFCONFIG_SCRIPT.bak
+    cp $IFCONFIG_SCRIPT ${IFCONFIG_SCRIPT}.bak
 fi
 
-# Update IPv6 prefix in 3proxy.cfg
-echo "Updating 3proxy.cfg with new IPv6 prefix..."
-sed -i "s/:[0-9a-f]\{1,4\}:[0-9a-f]\{1,4\}:[0-9a-f]\{1,4\}:[0-9a-f]\{1,4\}/:$CURRENT_IPV6/g" $PROXY_CONFIG
+# Function to generate random IPv6 suffix (last 4 blocks)
+generate_ipv6_suffix() {
+    printf '%x:%x:%x:%x\n' $((RANDOM%65536)) $((RANDOM%65536)) $((RANDOM%65536)) $((RANDOM%65536))
+}
 
-# Update IPv6 prefix in boot_iptables.sh
-echo "Updating boot_iptables.sh with new IPv6 prefix..."
-sed -i "s/:[0-9a-f]\{1,4\}:[0-9a-f]\{1,4\}:[0-9a-f]\{1,4\}:[0-9a-f]\{1,4\}/:$CURRENT_IPV6/g" $IPTABLES_SCRIPT
+# Generate random IPv6 addresses and store them in a temporary file
+echo "Generating random IPv6 addresses..."
+grep -oP '(?<=-e\s)[0-9a-f:]{1,39}' $PROXY_CONFIG | while read -r line; do
+    RANDOM_SUFFIX=$(generate_ipv6_suffix)
+    GENERATED_IPV6="$CURRENT_IPV6:$RANDOM_SUFFIX"
+    echo "$GENERATED_IPV6" >> $TEMP_IPV6_FILE
+done
 
-# Update IPv6 prefix in boot_ifconfig.sh (if the file exists)
+# Read from the temp file for both 3proxy.cfg and boot_ifconfig.sh updates
+
+# Update the IPv6 addresses after the "-e" flag in 3proxy.cfg
+echo "Updating 3proxy.cfg with new IPv6 prefix and random suffix..."
+while read -r ipv6_address; do
+    sed -i "0,/-e\s[0-9a-f:]\+/s//-e $ipv6_address/" $PROXY_CONFIG
+done < $TEMP_IPV6_FILE
+
+# Update IPv6 addresses after "add" in boot_ifconfig.sh (if the file exists)
 if [ -f $IFCONFIG_SCRIPT ]; then
-    echo "Updating boot_ifconfig.sh with new IPv6 prefix..."
-    sed -i "s/:[0-9a-f]\{1,4\}:[0-9a-f]\{1,4\}:[0-9a-f]\{1,4\}:[0-9a-f]\{1,4\}/:$CURRENT_IPV6/g" $IFCONFIG_SCRIPT
+    echo "Updating boot_ifconfig.sh with new IPv6 addresses..."
+    while read -r ipv6_address; do
+        sed -i "0,/add\s[0-9a-f:]\+/s//add $ipv6_address/" $IFCONFIG_SCRIPT
+    done < $TEMP_IPV6_FILE
 fi
 
-# Verify updates
+# Verify update in 3proxy.cfg and boot_ifconfig.sh
 echo "Verifying updates..."
-grep -E ":[0-9a-f]{1,4}:[0-9a-f]{1,4}:[0-9a-f]{1,4}:[0-9a-f]{1,4}" $PROXY_CONFIG
-grep -E ":[0-9a-f]{1,4}:[0-9a-f]{1,4}:[0-9a-f]{1,4}:[0-9a-f]{1,4}" $IPTABLES_SCRIPT
+echo "3proxy.cfg:"
+grep "-e" $PROXY_CONFIG
 if [ -f $IFCONFIG_SCRIPT ]; then
-    grep -E ":[0-9a-f]{1,4}:[0-9a-f]{1,4}:[0-9a-f]{1,4}:[0-9a-f]{1,4}" $IFCONFIG_SCRIPT
+    echo "boot_ifconfig.sh:"
+    grep "add" $IFCONFIG_SCRIPT
 fi
 
-echo "IPv6 prefix updated successfully!"
+# Clean up
+rm $TEMP_IPV6_FILE
+
+echo "IPv6 addresses updated successfully!"
