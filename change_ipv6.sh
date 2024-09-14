@@ -26,11 +26,11 @@ mkdir -p $WORKDIR
 # Clear or create the temporary IPv6 file
 > $TEMP_IPV6_FILE
 
-# Generate random IPv6 addresses and store them in generated_ipv6.txt
-echo "Generating and writing random IPv6 addresses to $TEMP_IPV6_FILE..."
-
 # Count the number of occurrences of '-e' in the 3proxy config
 count=$(grep -c '-e' $PROXY_CONFIG)
+
+# Debug output to verify the count of '-e' entries
+echo "Debug: Number of '-e' entries in $PROXY_CONFIG: $count"
 
 if [[ $count -eq 0 ]]; then
     echo "Error: No '-e' entries found in $PROXY_CONFIG."
@@ -38,11 +38,16 @@ if [[ $count -eq 0 ]]; then
 fi
 
 # Generate the required number of random IPv6 addresses
+echo "Generating random IPv6 addresses..."
 for ((i=1; i<=count; i++)); do
     RANDOM_SUFFIX=$(generate_ipv6_suffix)
     GENERATED_IPV6="$CURRENT_IPV6:$RANDOM_SUFFIX"
     echo "$GENERATED_IPV6" >> $TEMP_IPV6_FILE
 done
+
+# Debug output to ensure addresses were generated
+echo "Debug: Generated IPv6 addresses:"
+cat $TEMP_IPV6_FILE
 
 # Check if the temporary file has content
 if [[ ! -s $TEMP_IPV6_FILE ]]; then
@@ -76,9 +81,5 @@ if [ -f $IFCONFIG_SCRIPT ]; then
     echo "boot_ifconfig.sh:"
     grep "add" $IFCONFIG_SCRIPT
 fi
-
-# IPv6 addresses have been saved to generated_ipv6.txt
-echo "Generated IPv6 addresses:"
-cat $TEMP_IPV6_FILE
 
 echo "IPv6 addresses updated successfully!"
